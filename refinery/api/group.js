@@ -9,9 +9,17 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing prompt' });
   }
 
+  const portkeyApiKey = process.env.PORTKEY_SHARED_SERVICE_KEY;
+  if (!portkeyApiKey) {
+    return res.status(500).json({ error: 'Missing PORTKEY_SHARED_SERVICE_KEY' });
+  }
+
   try {
+    const modelName = process.env.PORTKEY_ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+    const providerSlug = process.env.PORTKEY_ANTHROPIC_PROVIDER || '@anthropic';
+    const model = modelName.startsWith('@') ? modelName : `${providerSlug}/${modelName}`;
     const body = {
-      model: 'claude-sonnet-4-6',
+      model,
       max_tokens: 8000,
       messages: [{ role: 'user', content: prompt }],
     };
@@ -20,11 +28,12 @@ export default async function handler(req, res) {
       body.system = system;
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('https://api.portkey.ai/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'x-portkey-api-key': portkeyApiKey,
+        'x-portkey-provider': 'anthropic',
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(body),

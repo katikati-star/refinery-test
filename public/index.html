@@ -2424,12 +2424,15 @@ async function startProcessing() {
 
 THE RULE IS SIMPLE:
 - Same base product name + differs ONLY in size and/or color → SAME GROUP
-- Different product (different formula, form factor, scent, flavor, included contents, or function) → SEPARATE GROUP
+- Different base product name → SEPARATE GROUP
 
 WHAT COUNTS AS SIZE: weight, volume, count, pack quantity, dimensions
 WHAT COUNTS AS COLOR: color, shade, finish — these are variants, not separate products
 
-AMBIGUOUS CASES: If you cannot tell from the title alone whether products are the same base product, use the content similarity scores below as a tiebreaker. 80%+ → group. Under 80% → separate.
+IMPORTANT — THE FULL PRODUCT NAME MUST MATCH:
+Any word that changes the product's formula, composition, or nature makes it a different product — not a variant. If removing or changing any word in the name would describe a meaningfully different product, they are separate groups. Only size and color descriptors may differ within a group.
+
+AMBIGUOUS CASES: If you cannot tell from the title alone, use the content similarity scores below. 80%+ → group. Under 80% → separate.
 
 CONTENT SIMILARITY SCORES:
 ${mustGroupPairs.length > 0 ? `90%+ match (group these):\n${mustGroupPairs.join('\n')}` : ''}
@@ -2443,7 +2446,7 @@ Reply ONLY with compact JSON, no markdown, no explanation:
 {"groups":[{"name":"short product name","reason":"brief variant summary","items":[0,2,5]}],"ungrouped":[3,7],"extracted":{"0":{"size":"25 ct, Pack of 2","color":"Classic Black"},"2":{"size":"25 ct","color":""}}}
 
 IMPORTANT for the "extracted" field:
-- "size" must contain ONLY physical product size, weight, volume, count, or pack multiplier (e.g. "25 ct", "5 lb.", "32 fl. oz.", "Pack of 2"). Do NOT include coverage areas, duration claims, or feature descriptions.
+- "size" must contain ONLY physical product size, weight, volume, count, or pack multiplier. Do NOT include coverage areas, duration claims, or feature descriptions.
 - "color" should be the full color, shade, or finish descriptor if present, otherwise leave empty.
 - Every product index must appear in either a group or ungrouped, and must have an entry in extracted.`;
   addLog('Calling Claude AI...', 'info');
@@ -2471,10 +2474,13 @@ IMPORTANT for the "extracted" field:
 
 THE RULE IS SIMPLE:
 - Same base product name + differs ONLY in size and/or color → SAME GROUP
-- Different product (different formula, form factor, scent, flavor, included contents, or function) → SEPARATE GROUP
+- Different base product name → SEPARATE GROUP
 
 WHAT COUNTS AS SIZE: weight, volume, count, pack quantity, dimensions
 WHAT COUNTS AS COLOR: color, shade, finish — these are variants, not separate products
+
+IMPORTANT — THE FULL PRODUCT NAME MUST MATCH:
+Any word that changes the product's formula, composition, or nature makes it a different product — not a variant. If removing or changing any word in the name would describe a meaningfully different product, they are separate groups. Only size and color descriptors may differ within a group.
 
 AMBIGUOUS CASES: If you cannot tell from the title alone, use the content similarity scores below. 80%+ → group. Under 80% → separate.
 

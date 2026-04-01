@@ -18,27 +18,20 @@ export default async function handler(req, res) {
 
     const html = await response.text();
 
-    // Extract main product image URL from Amazon page
     let imageUrl = null;
-
-    // Try landing-image (main product image)
     const landingMatch = html.match(/"large":"(https:\/\/m\.media-amazon\.com\/images\/I\/[^"]+)"/);
     if (landingMatch) imageUrl = landingMatch[1];
-
-    // Fallback: try hiRes image in colorImages
     if (!imageUrl) {
       const hiResMatch = html.match(/"hiRes":"(https:\/\/m\.media-amazon\.com\/images\/I\/[^"]+)"/);
       if (hiResMatch) imageUrl = hiResMatch[1];
     }
-
-    // Fallback: try og:image meta tag
     if (!imageUrl) {
       const ogMatch = html.match(/<meta property="og:image" content="([^"]+)"/);
       if (ogMatch) imageUrl = ogMatch[1];
     }
-
+    // Fallback: use CDN thumbnail
     if (!imageUrl) {
-      return res.status(404).json({ error: 'Image not found', asin });
+      imageUrl = `https://images-na.ssl-images-amazon.com/images/P/${asin}.01.LZZZZZZZ.jpg`;
     }
 
     return res.status(200).json({ asin, imageUrl });

@@ -1348,12 +1348,30 @@
     <div style="font-family: 'DM Serif Display', serif; font-size: 2.2rem; color: #f0f4ff; margin-bottom: 6px;">
       The <span style="color: #f97316;">Refinery</span>
     </div>
-    <p style="font-size: 0.85rem; color: #6b7fa8; margin-bottom: 32px; font-family: 'DM Sans', sans-serif;">Enter your password to continue</p>
+    <p style="font-size: 0.85rem; color: #6b7fa8; margin-bottom: 32px; font-family: 'DM Sans', sans-serif;">Enter your password and Anthropic API key to continue</p>
     <div style="position: relative; margin-bottom: 12px;">
       <input
         id="password-input"
         type="password"
         placeholder="Password"
+        onkeydown="if(event.key==='Enter') document.getElementById('apikey-input').focus()"
+        style="
+          width: 100%; padding: 14px 18px;
+          background: #0d1526; border: 1.5px solid #1e2d4d;
+          border-radius: 10px; color: #f0f4ff;
+          font-family: 'DM Sans', sans-serif; font-size: 0.95rem;
+          outline: none; box-sizing: border-box;
+          transition: border-color 0.2s;
+        "
+        onfocus="this.style.borderColor='#3b82f6'"
+        onblur="this.style.borderColor='#1e2d4d'"
+      />
+    </div>
+    <div style="position: relative; margin-bottom: 12px;">
+      <input
+        id="apikey-input"
+        type="password"
+        placeholder="Anthropic API key (sk-ant-...)"
         onkeydown="if(event.key==='Enter') checkPassword()"
         style="
           width: 100%; padding: 14px 18px;
@@ -1377,6 +1395,7 @@
     " onmouseover="this.style.background='#ea6c0a'" onmouseout="this.style.background='#f97316'">
       Unlock
     </button>
+    <p style="font-size:0.72rem; color:#2d3d5a; margin-top:16px; font-family:'DM Sans',sans-serif; line-height:1.5;">Your API key is used only for this session and never stored.</p>
   </div>
 </div>
 
@@ -1433,11 +1452,17 @@
 
 async function checkPassword() {
   const input = document.getElementById('password-input').value;
+  const apiKey = document.getElementById('apikey-input').value.trim();
   const err = document.getElementById('password-error');
+
   if (!input) { err.textContent = 'Please enter a password.'; return; }
+  if (!apiKey) { err.textContent = 'Please enter your Anthropic API key.'; return; }
+  if (!apiKey.startsWith('sk-ant-')) { err.textContent = 'API key should start with sk-ant-'; return; }
+
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
   const hex = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
   if (hex === 'b88c041653c4a346695fe5083a5e6d87954f2ad7bf1389ac2f5f54073865380e') {
+    window.ANTHROPIC_API_KEY = apiKey;
     document.getElementById('password-gate').style.display = 'none';
     document.getElementById('mode-selector').style.display = 'flex';
     err.textContent = '';
@@ -2284,7 +2309,6 @@ function removeFile() {
 // ============================================================
 // PROCESSING — calls Claude API
 // ============================================================
-
 async function callClaude(prompt, system, signal) {
   const body = {
     model: 'claude-sonnet-4-6',
@@ -2297,7 +2321,7 @@ async function callClaude(prompt, system, signal) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
+      'x-api-key': window.ANTHROPIC_API_KEY,
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
     },
@@ -2311,12 +2335,7 @@ async function callClaude(prompt, system, signal) {
   return data;
 }
 
-let isProcessing = false;
-
 async function startProcessing() {
-  if (isProcessing) return;
-  isProcessing = true;
-  document.getElementById('upload-next-btn').disabled = true;
   goToPage('page-processing', 3);
   const log = document.getElementById('processing-log');
   const statusText = document.getElementById('processing-status-text');
@@ -2411,23 +2430,45 @@ async function startProcessing() {
   }
 
   const productLines = products.map(p => '[' + p.idx + '] ' + p.title).join('\n');
+  const mustGroupLine = mustGroupPairs.length > 0
+    ? `\nMANDATORY GROUPS — these pairs have 90%+ content similarity and MUST be in the same group regardless of any other rule:\n${mustGroupPairs.join('\n')}\n`
+    : '';
+  const simLine = simHints.length > 0
+    ? `\nADVISORY HINTS (80-89% similarity — group if title differences are only size/color):\n${simHints.join(', ')}\n`
+    : '';
 
-  const prompt = `You are grouping e-commerce product listings into variant groups.
+  const prompt = `You are grouping e-commerce product listings. Products are the same item sold in different variants and should be grouped together. Products that are fundamentally different items must never be grouped.
 
-DECISION PROCESS — apply in order:
-1. TITLE MATCH: If products share the same base name and differ only in size, count, color, or pack → same group. This is the primary signal.
-2. CONTENT MATCH: If titles are ambiguous, use the content similarity scores below. 80%+ → group. Under 80% → separate groups.
-3. For Amazon products only, ambiguous cases under 80% content match will be verified by image comparison separately.
+TWO QUESTIONS TO ASK FOR EACH POTENTIAL GROUP:
+1. Is the base product name the same (ignoring size, count, or pack descriptors)?
+2. Are ALL non-size attributes — flavor, color, scent, finish, formula, form factor — identical between them?
 
-GROUPING RULES:
-- Same base name + only size/weight/volume/count/pack differs → same group
-- Same base name + flavor, color, scent, finish, or formula differs → separate groups, no exceptions
-- Refills, bundles with accessories, or different form factors → always separate groups
+If YES to both → same group.
+If NO to either → separate groups.
 
-CONTENT SIMILARITY SCORES (pre-computed — use as tiebreaker for ambiguous titles):
-${mustGroupPairs.length > 0 ? `90%+ match (strong signal — group these):\n${mustGroupPairs.join('\n')}` : ''}
-${simHints.length > 0 ? `80-89% match (group if title differences are only size/pack):\n${simHints.join(', ')}` : ''}
-${mustGroupPairs.length === 0 && simHints.length === 0 ? '(no high-similarity pairs found)' : ''}
+WHAT CAN DIFFER WITHIN A GROUP (size/quantity only):
+- Any numeric measurement: weight, volume, dimensions, area, count, pieces, doses, servings, etc.
+- Pack count: single unit vs multi-pack
+
+WHAT MUST BE IDENTICAL WITHIN A GROUP (everything else):
+- Flavor, color, scent, finish, pattern — if any of these differ, they are separate groups, no exceptions
+- Formula, ingredients, active agents, composition
+- Form factor (liquid, powder, tablet, spray, gel, etc.)
+- Intended use, application, or target
+- What is physically included in the box
+
+NON-VARIANT DIFFERENCES — always separate groups regardless of name similarity:
+- One includes an accessory, tool, applicator, or bundled item the other does not
+- One is a refill, replacement, or cartridge for a device
+- Different form factors
+- Different intended uses or applications
+- Any descriptor that changes what you physically receive beyond just more/less of the exact same thing
+
+MANDATORY GROUPS — pairs pre-verified by content analysis with 90%+ similarity. Place these in the same group, no exceptions:
+${mustGroupPairs.length > 0 ? mustGroupPairs.join('\n') : '(none)'}
+
+ADVISORY (80-89% similarity) — group only if title differences are purely size or pack count, and all other attributes are identical:
+${simHints.length > 0 ? simHints.join(', ') : '(none)'}
 
 PRODUCTS:
 ${productLines}
@@ -2436,7 +2477,7 @@ Reply ONLY with compact JSON, no markdown, no explanation:
 {"groups":[{"name":"short product name","reason":"brief variant summary","items":[0,2,5]}],"ungrouped":[3,7],"extracted":{"0":{"size":"25 ct, Pack of 2","color":""},"2":{"size":"25 ct","color":""}}}
 
 IMPORTANT for the "extracted" field:
-- "size" must contain ONLY physical product size, weight, volume, count, or pack multiplier (e.g. "25 ct", "5 lb.", "32 fl. oz.", "Pack of 2"). Do NOT include coverage areas, duration claims, feature descriptions, or rankings.
+- "size" must contain ONLY physical product size, weight, volume, count, or pack multiplier. Examples of valid values: "25 ct", "5 lb.", "32 fl. oz.", "1.5 cu. ft.", "Pack of 2", "25 ct, Pack of 2", "6-pack". Do NOT include: coverage areas (sq. ft.), duration claims (feeds up to X weeks), feature descriptions, rankings, origin statements, or any phrase that describes what the product does rather than its physical quantity. If no valid size/count/pack exists in the title, return an empty string.
 - "color" should be the full color, flavor, or scent descriptor if present, otherwise leave empty.
 - Every product index must appear in either a group or ungrouped, and must have an entry in extracted.`;
   addLog('Calling Claude AI...', 'info');
@@ -2460,21 +2501,38 @@ IMPORTANT for the "extracted" field:
     }
 
     const chunkLines = chunkProducts.map(p => '[' + p.idx + '] ' + p.title).join('\n');
-    const chunkPrompt = `You are grouping e-commerce product listings into variant groups.
+    const chunkPrompt = `You are grouping e-commerce product listings. Products are the same item sold in different variants and should be grouped together. Products that are fundamentally different items must never be grouped.
 
-DECISION PROCESS — apply in order:
-1. TITLE MATCH: If products share the same base name and differ only in size, count, color, or pack → same group.
-2. CONTENT MATCH: If titles are ambiguous, use the content similarity scores below. 80%+ → group. Under 80% → separate.
+TWO QUESTIONS TO ASK FOR EACH POTENTIAL GROUP:
+1. Is the base product name the same (ignoring size, count, or pack descriptors)?
+2. Are ALL non-size attributes — flavor, color, scent, finish, formula, form factor — identical between them?
 
-GROUPING RULES:
-- Same base name + only size/weight/volume/count/pack differs → same group
-- Same base name + flavor, color, scent, finish, or formula differs → separate groups, no exceptions
-- Refills, bundles with accessories, or different form factors → always separate groups
+If YES to both → same group.
+If NO to either → separate groups.
 
-CONTENT SIMILARITY SCORES:
-${chunkMustGroupPairs.length > 0 ? `90%+ match (group these):\n${chunkMustGroupPairs.join('\n')}` : ''}
-${chunkSimHints.length > 0 ? `80-89% match (group if title differences are only size/pack):\n${chunkSimHints.join(', ')}` : ''}
-${chunkMustGroupPairs.length === 0 && chunkSimHints.length === 0 ? '(no high-similarity pairs found)' : ''}
+WHAT CAN DIFFER WITHIN A GROUP (size/quantity only):
+- Any numeric measurement: weight, volume, dimensions, area, count, pieces, doses, servings, etc.
+- Pack count: single unit vs multi-pack
+
+WHAT MUST BE IDENTICAL WITHIN A GROUP (everything else):
+- Flavor, color, scent, finish, pattern — if any of these differ, they are separate groups, no exceptions
+- Formula, ingredients, active agents, composition
+- Form factor (liquid, powder, tablet, spray, gel, etc.)
+- Intended use, application, or target
+- What is physically included in the box
+
+NON-VARIANT DIFFERENCES — always separate groups regardless of name similarity:
+- One includes an accessory, tool, applicator, or bundled item the other does not
+- One is a refill, replacement, or cartridge for a device
+- Different form factors
+- Different intended uses or applications
+- Any descriptor that changes what you physically receive beyond just more/less of the exact same thing
+
+MANDATORY GROUPS — pairs pre-verified by content analysis with 90%+ similarity. Place these in the same group, no exceptions:
+${chunkMustGroupPairs.length > 0 ? chunkMustGroupPairs.join('\n') : '(none)'}
+
+ADVISORY (80-89% similarity) — group only if title differences are purely size or pack count, and all other attributes are identical:
+${chunkSimHints.length > 0 ? chunkSimHints.join(', ') : '(none)'}
 
 PRODUCTS:
 ${chunkLines}
@@ -2483,7 +2541,7 @@ Reply ONLY with compact JSON, no markdown, no explanation:
 {"groups":[{"name":"short product name","reason":"brief variant summary","items":[0,2,5]}],"ungrouped":[3,7],"extracted":{"0":{"size":"25 ct, Pack of 2","color":""},"2":{"size":"25 ct","color":""}}}
 
 IMPORTANT for the "extracted" field:
-- "size" must contain ONLY physical product size, weight, volume, count, or pack multiplier (e.g. "25 ct", "5 lb.", "32 fl. oz.", "Pack of 2"). Do NOT include coverage areas, duration claims, or feature descriptions.
+- "size" must contain ONLY physical product size, weight, volume, count, or pack multiplier. Examples: "25 ct", "5 lb.", "32 fl. oz.", "Pack of 2". Do NOT include coverage areas, duration claims, feature descriptions, or rankings.
 - "color" should be the full color, flavor, or scent descriptor if present, otherwise leave empty.
 - Every product index must appear in either a group or ungrouped, and must have an entry in extracted.`;
 
@@ -2528,19 +2586,18 @@ IMPORTANT for the "extracted" field:
 
         const chunkResult = await processChunk(chunks[ci], ci * CHUNK_SIZE, ci, chunks.length);
 
-        // Remap group item indices — they're already global (product.idx) so no remapping needed
         mergedGroups.push(...chunkResult.groups);
         mergedUngrouped.push(...(chunkResult.ungrouped || []));
         Object.assign(mergedExtracted, chunkResult.extracted || {});
 
         addLog(`Batch ${ci + 1} done: ${chunkResult.groups.length} groups`, 'success');
 
-        // Rate limit pause between chunks
+        // Rate limit pause between chunks — free tier allows 10k tokens/min
         if (ci < chunks.length - 1) {
-          addLog('Pausing between batches…', 'info');
-          const pauseSecs = 15;
+          addLog('Pausing to respect API rate limits…', 'info');
+          const pauseSecs = 65;
           for (let s = pauseSecs; s > 0; s--) {
-            setProgress(25 + Math.round(((ci + 1) / chunks.length) * 45), `Next batch in ${s}s…`);
+            setProgress(25 + Math.round(((ci + 1) / chunks.length) * 45), `Rate limit pause — next batch in ${s}s…`);
             await new Promise(r => setTimeout(r, 1000));
           }
         }
@@ -2572,14 +2629,15 @@ IMPORTANT for the "extracted" field:
       if (crossMust.length > 0) {
         addLog(`${crossMust.length} potential cross-batch merges found — verifying…`, 'info');
 
-        const mergePrompt = `Decide which product groups should be merged. Merge only if groups share the same base product name and differ only in size, count, or pack. Keep separate if flavor, color, scent, form factor, or contents differ.
+        const mergePrompt = `You have groups of e-commerce products from separate processing batches. Some groups may belong together as the same product variant family. For each pair listed below, decide: should these groups be MERGED into one, or kept SEPARATE?
 
-PAIRS TO EVALUATE:
-${crossMust.map(({i, j, sim}) => `(${i},${j}) ${sim}%sim | A: ${groupSummaries[i]} | B: ${groupSummaries[j]}`).join('\n')}
+Apply the same rule: merge only if they share the same base product name AND differ only in size, count, or pack. Keep separate if flavor, color, scent, form factor, or included contents differ.
 
-YOU MUST respond with ONLY a JSON array. No explanation, no text, no markdown. Just the array.
-If pairs should merge: [{"a":0,"b":1}]
-If nothing should merge: []`;
+GROUPS:
+${crossMust.map(({i, j, sim}) => `Pair (${i},${j}) ${sim}% sim:\n  A: ${groupSummaries[i]}\n  B: ${groupSummaries[j]}`).join('\n\n')}
+
+Reply ONLY with compact JSON array of pairs to merge (empty array if none):
+[{"a":0,"b":1},{"a":2,"b":5}]`;
 
         try {
           const mergeController = new AbortController();
@@ -2677,7 +2735,6 @@ If nothing should merge: []`;
   if (buildStep) { buildStep.classList.remove('active'); buildStep.classList.add('done'); }
 
   setTimeout(() => {
-    isProcessing = false;
     buildReviewPage();
     goToPage('page-review', 4);
   }, 1000);

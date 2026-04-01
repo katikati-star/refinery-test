@@ -2541,14 +2541,26 @@ IMPORTANT for the "extracted" field:
       const mergedUngrouped = [];
       const mergedExtracted = {};
 
+      let usedFallback = false;
+
       for (let ci = 0; ci < chunks.length; ci++) {
         const pct = 25 + Math.round((ci / chunks.length) * 45);
         setProgress(pct, `Processing batch ${ci + 1} of ${chunks.length}…`);
         addLog(`Batch ${ci + 1}/${chunks.length}: ${chunks[ci].length} products`, 'info');
 
-        const chunkResult = await processChunk(chunks[ci], ci * CHUNK_SIZE, ci, chunks.length);
+        let chunkResult;
+        try {
+          chunkResult = await processChunk(chunks[ci], ci * CHUNK_SIZE, ci, chunks.length);
+        } catch(chunkErr) {
+          addLog(`Batch ${ci + 1} failed: ${chunkErr.message} — using fallback for this batch`, 'warn');
+          usedFallback = true;
+          chunkResult = {
+            groups: chunks[ci].map(p => ({ name: p.title.slice(0, 40) || `Product`, reason: 'fallback', items: [p.idx] })),
+            ungrouped: [],
+            extracted: {}
+          };
+        }
 
-        // Remap group item indices — they're already global (product.idx) so no remapping needed
         mergedGroups.push(...chunkResult.groups);
         mergedUngrouped.push(...(chunkResult.ungrouped || []));
         Object.assign(mergedExtracted, chunkResult.extracted || {});
@@ -2620,16 +2632,16 @@ If nothing should merge: []`;
             });
             // Filter out merged groups
             const finalGroups = mergedGroups.filter((_, i) => !toRemove.has(i));
-            aiResult = { groups: finalGroups, ungrouped: mergedUngrouped, extracted: mergedExtracted };
+            aiResult = { groups: finalGroups, ungrouped: mergedUngrouped, extracted: mergedExtracted, _fallback: usedFallback };
           } else {
-            aiResult = { groups: mergedGroups, ungrouped: mergedUngrouped, extracted: mergedExtracted };
+            aiResult = { groups: mergedGroups, ungrouped: mergedUngrouped, extracted: mergedExtracted, _fallback: usedFallback };
           }
         } catch(mergeErr) {
           addLog('Cross-batch merge skipped: ' + mergeErr.message, 'warn');
-          aiResult = { groups: mergedGroups, ungrouped: mergedUngrouped, extracted: mergedExtracted };
+          aiResult = { groups: mergedGroups, ungrouped: mergedUngrouped, extracted: mergedExtracted, _fallback: usedFallback };
         }
       } else {
-        aiResult = { groups: mergedGroups, ungrouped: mergedUngrouped, extracted: mergedExtracted };
+        aiResult = { groups: mergedGroups, ungrouped: mergedUngrouped, extracted: mergedExtracted, _fallback: usedFallback };
       }
 
       addLog(`Final: ${aiResult.groups.length} groups across ${products.length} products`, 'success');

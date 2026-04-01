@@ -14,6 +14,7 @@ export default async function handler(req, res) {
     const providerSlug = process.env.PORTKEY_ANTHROPIC_PROVIDER || '@anthropic';
     const model = modelName.startsWith('@') ? modelName : `${providerSlug}/${modelName}`;
 
+    // prompt can be a string or an array (for vision calls)
     const content = Array.isArray(prompt) ? prompt : prompt;
 
     const body = {

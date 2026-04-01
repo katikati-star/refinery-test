@@ -2324,7 +2324,7 @@ async function callClaude(prompt, system, signal) {
   return data;
 }
 
-let isProcessing = false;
+const JSON_SYSTEM = 'You are a JSON API. You MUST respond with ONLY a valid JSON object or array. No explanation, no preamble, no markdown, no code fences. Your entire response must be parseable by JSON.parse(). Start your response with { or [ and end with } or ].';
 
 async function startProcessing() {
   if (isProcessing) return;
@@ -2478,7 +2478,7 @@ IMPORTANT for the "extracted" field:
   setProgress(25, 'Sending to AI for analysis');
   setStep('step-ai');
 
-  const CHUNK_SIZE = 60;
+  const CHUNK_SIZE = 40;
   let aiResult = null;
 
   async function processChunk(chunkProducts, chunkOffset, chunkIdx, totalChunks) {
@@ -2539,14 +2539,14 @@ IMPORTANT for the "extracted" field:
 - "color" should be the full color, flavor, or scent descriptor if present, otherwise leave empty.
 - Every product index must appear in either a group or ungrouped, and must have an entry in extracted.`;
 
-    const data = await callClaude(chunkPrompt, null);
+    const data = await callClaude(chunkPrompt, JSON_SYSTEM);
 
     const text = data.content.map(c => c.text || '').join('');
     let clean = text.replace(/```json|```/g, '').trim();
 
     if (!clean.startsWith('{')) {
       addLog('Non-JSON response, retrying…', 'warn');
-      const retryData = await callClaude(chunkPrompt + '\n\nYou MUST reply with ONLY a JSON object. Start with { and end with }. No other text.', null);
+      const retryData = await callClaude(chunkPrompt, JSON_SYSTEM);
       clean = retryData.content.map(c => c.text || '').join('').replace(/```json|```/g, '').trim();
     }
 
@@ -2557,13 +2557,13 @@ IMPORTANT for the "extracted" field:
     if (products.length <= CHUNK_SIZE) {
       // Single pass
       addLog('Sending request...', 'info');
-      const data = await callClaude(prompt, null);
+      const data = await callClaude(prompt, JSON_SYSTEM);
       addLog(`Response status: 200`, 'info');
       const text = data.content.map(c => c.text || '').join('');
       let singleClean = text.replace(/```json|```/g, '').trim();
       if (!singleClean.startsWith('{')) {
         addLog('Non-JSON response, retrying…', 'warn');
-        const retryData = await callClaude(prompt + '\n\nYou MUST reply with ONLY a JSON object. Start with { and end with }. No other text.', null);
+        const retryData = await callClaude(prompt, JSON_SYSTEM);
         singleClean = retryData.content.map(c => c.text || '').join('').replace(/```json|```/g, '').trim();
       }
       aiResult = JSON.parse(singleClean);
@@ -2628,7 +2628,7 @@ IMPORTANT for the "extracted" field:
         return `[G${i}] ${parentTitle.slice(0, 80)} (${g.items.length} item${g.items.length > 1 ? 's' : ''})`;
       });
 
-      // Find cross-chunk mandatory pairs
+      // Find cross-chunk mandatory pairs — cap at top 50 by similarity to keep prompt manageable
       const crossMust = [];
       for (let i = 0; i < mergedGroups.length; i++) {
         for (let j = i + 1; j < mergedGroups.length; j++) {
@@ -2636,31 +2636,37 @@ IMPORTANT for the "extracted" field:
           const pj = products[mergedGroups[j].items[0]];
           if (!pi || !pj) continue;
           const sim = contentSimilarity(pi, pj);
-          if (sim >= 85) crossMust.push({ i, j, sim });
+          if (sim >= 88) crossMust.push({ i, j, sim });
         }
       }
+      // Sort by similarity descending and cap
+      crossMust.sort((a, b) => b.sim - a.sim);
+      const crossMustCapped = crossMust.slice(0, 50);
 
-      if (crossMust.length > 0) {
-        addLog(`${crossMust.length} potential cross-batch merges found — verifying…`, 'info');
+      if (crossMustCapped.length > 0) {
+        addLog(`${crossMust.length} potential cross-batch merges found — verifying top ${crossMustCapped.length}…`, 'info');
 
         const mergePrompt = `You have groups of e-commerce products from separate processing batches. Some groups may belong together as the same product variant family. For each pair listed below, decide: should these groups be MERGED into one, or kept SEPARATE?
 
 Apply the same rule: merge only if they share the same base product name AND differ only in size, count, or pack. Keep separate if flavor, color, scent, form factor, or included contents differ.
 
 GROUPS:
-${crossMust.map(({i, j, sim}) => `Pair (${i},${j}) ${sim}% sim:\n  A: ${groupSummaries[i]}\n  B: ${groupSummaries[j]}`).join('\n\n')}
+${crossMustCapped.map(({i, j, sim}) => `Pair (${i},${j}) ${sim}% sim:\n  A: ${groupSummaries[i]}\n  B: ${groupSummaries[j]}`).join('\n\n')}
 
 Reply ONLY with compact JSON array of pairs to merge (empty array if none):
 [{"a":0,"b":1},{"a":2,"b":5}]`;
 
         try {
-          const mergeController = new AbortController();
-          const mergeTimeout = setTimeout(() => mergeController.abort(), 60000);
-          const mergeData = await callClaude(mergePrompt, null, mergeController.signal);
-          clearTimeout(mergeTimeout);
+          const mergeData = await callClaude(mergePrompt, JSON_SYSTEM);
           if (mergeData) {
             const mergeText = mergeData.content.map(c => c.text || '').join('');
-            const mergePairs = JSON.parse(mergeText.replace(/```json|```/g, '').trim());
+            let mergePairsClean = mergeText.replace(/```json|```/g, '').trim();
+            if (!mergePairsClean.startsWith('[')) {
+              addLog('Merge response non-JSON, retrying…', 'warn');
+              const mergeRetry = await callClaude(mergePrompt, JSON_SYSTEM);
+              mergePairsClean = mergeRetry.content.map(c => c.text || '').join('').replace(/```json|```/g, '').trim();
+            }
+            const mergePairs = JSON.parse(mergePairsClean);
 
             // Apply merges — combine group b into group a, mark b for removal
             const toRemove = new Set();

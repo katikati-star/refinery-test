@@ -2325,6 +2325,7 @@ async function callClaude(prompt, system, signal) {
 }
 
 const JSON_SYSTEM = 'You are a JSON API. You MUST respond with ONLY a valid JSON object or array. No explanation, no preamble, no markdown, no code fences. Your entire response must be parseable by JSON.parse(). Start your response with { or [ and end with } or ].';
+const JSON_SYSTEM_ARRAY = 'You are a JSON API that returns array responses. You MUST respond with ONLY a valid JSON array. No explanation, no preamble, no markdown, no code fences. Your entire response must be parseable by JSON.parse(). Start your response with [ and end with ].';
 
 let isProcessing = false;
 
@@ -2659,13 +2660,13 @@ Reply ONLY with compact JSON array of pairs to merge (empty array if none):
 [{"a":0,"b":1},{"a":2,"b":5}]`;
 
         try {
-          const mergeData = await callClaude(mergePrompt, JSON_SYSTEM);
+          const mergeData = await callClaude(mergePrompt, JSON_SYSTEM_ARRAY);
           if (mergeData) {
             const mergeText = mergeData.content.map(c => c.text || '').join('');
             let mergePairsClean = mergeText.replace(/```json|```/g, '').trim();
             if (!mergePairsClean.startsWith('[')) {
               addLog('Merge response non-JSON, retrying…', 'warn');
-              const mergeRetry = await callClaude(mergePrompt, JSON_SYSTEM);
+              const mergeRetry = await callClaude(mergePrompt, JSON_SYSTEM_ARRAY);
               mergePairsClean = mergeRetry.content.map(c => c.text || '').join('').replace(/```json|```/g, '').trim();
             }
             const mergePairs = JSON.parse(mergePairsClean);

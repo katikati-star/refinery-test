@@ -14,13 +14,22 @@ export default async function handler(req, res) {
     const providerSlug = process.env.PORTKEY_ANTHROPIC_PROVIDER || '@anthropic';
     const model = modelName.startsWith('@') ? modelName : `${providerSlug}/${modelName}`;
 
-    // prompt can be a string or an array (for vision calls)
     const content = Array.isArray(prompt) ? prompt : prompt;
+
+    const isVision = Array.isArray(prompt);
+
+    const messages = [{ role: 'user', content }];
+
+    // For non-vision JSON calls, prefill the assistant response with '{' or '['
+    // This forces the model to continue with JSON instead of responding conversationally
+    if (!isVision) {
+      messages.push({ role: 'assistant', content: system?.includes('array') ? '[' : '{' });
+    }
 
     const body = {
       model,
       max_tokens: 8000,
-      messages: [{ role: 'user', content }],
+      messages,
     };
     if (system) body.system = system;
 
@@ -37,6 +46,13 @@ export default async function handler(req, res) {
 
     const data = await response.json();
     if (!response.ok) return res.status(response.status).json({ error: data.error?.message || 'API error' });
+
+    // If we prefilled, prepend the prefill character back to the response text
+    if (!isVision && data.content?.[0]?.text) {
+      const prefill = system?.includes('array') ? '[' : '{';
+      data.content[0].text = prefill + data.content[0].text;
+    }
+
     return res.status(200).json(data);
   } catch (err) {
     return res.status(500).json({ error: err.message });

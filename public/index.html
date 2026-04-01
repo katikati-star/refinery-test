@@ -2427,56 +2427,20 @@ async function startProcessing() {
   }
 
   const productLines = products.map(p => '[' + p.idx + '] ' + p.title).join('\n');
-  const mustGroupLine = mustGroupPairs.length > 0
-    ? `\nMANDATORY GROUPS — these pairs have 90%+ content similarity and MUST be in the same group regardless of any other rule:\n${mustGroupPairs.join('\n')}\n`
-    : '';
-  const simLine = simHints.length > 0
-    ? `\nADVISORY HINTS (80-89% similarity — group if title differences are only size/color):\n${simHints.join(', ')}\n`
-    : '';
 
-  const prompt = `You are grouping e-commerce product listings. Products are the same item sold in different variants and should be grouped together. Products that are fundamentally different items must never be grouped.
+  const prompt = `Group these e-commerce products into variant families. Same base product + different size/pack/color only = same group. Different flavor, formula, or product type = separate group.
 
-TWO QUESTIONS TO ASK FOR EACH POTENTIAL GROUP:
-1. Is the base product name the same (ignoring size, count, or pack descriptors)?
-2. Are ALL non-size attributes — flavor, color, scent, finish, formula, form factor — identical between them?
-
-If YES to both → same group.
-If NO to either → separate groups.
-
-WHAT CAN DIFFER WITHIN A GROUP (size/quantity only):
-- Any numeric measurement: weight, volume, dimensions, area, count, pieces, doses, servings, etc.
-- Pack count: single unit vs multi-pack
-
-WHAT MUST BE IDENTICAL WITHIN A GROUP (everything else):
-- Flavor, color, scent, finish, pattern — if any of these differ, they are separate groups, no exceptions
-- Formula, ingredients, active agents, composition
-- Form factor (liquid, powder, tablet, spray, gel, etc.)
-- Intended use, application, or target
-- What is physically included in the box
-
-NON-VARIANT DIFFERENCES — always separate groups regardless of name similarity:
-- One includes an accessory, tool, applicator, or bundled item the other does not
-- One is a refill, replacement, or cartridge for a device
-- Different form factors
-- Different intended uses or applications
-- Any descriptor that changes what you physically receive beyond just more/less of the exact same thing
-
-MANDATORY GROUPS — pairs pre-verified by content analysis with 90%+ similarity. Place these in the same group, no exceptions:
+High-similarity pairs (likely same group):
 ${mustGroupPairs.length > 0 ? mustGroupPairs.join('\n') : '(none)'}
-
-ADVISORY (80-89% similarity) — group only if title differences are purely size or pack count, and all other attributes are identical:
-${simHints.length > 0 ? simHints.join(', ') : '(none)'}
+${simHints.length > 0 ? 'Advisory: ' + simHints.join(', ') : ''}
 
 PRODUCTS:
 ${productLines}
 
-Reply ONLY with compact JSON, no markdown, no explanation:
-{"groups":[{"name":"short product name","reason":"brief variant summary","items":[0,2,5]}],"ungrouped":[3,7],"extracted":{"0":{"size":"25 ct, Pack of 2","color":""},"2":{"size":"25 ct","color":""}}}
+Respond with this exact JSON structure, no other text:
+{"groups":[{"name":"base product name","reason":"size/pack variants","items":[0,2,5]}],"ungrouped":[],"extracted":{"0":{"size":"12 fl. oz., Pack of 4","color":"Blueberry"}}}
 
-IMPORTANT for the "extracted" field:
-- "size" must contain ONLY physical product size, weight, volume, count, or pack multiplier. Examples of valid values: "25 ct", "5 lb.", "32 fl. oz.", "1.5 cu. ft.", "Pack of 2", "25 ct, Pack of 2", "6-pack". Do NOT include: coverage areas (sq. ft.), duration claims (feeds up to X weeks), feature descriptions, rankings, origin statements, or any phrase that describes what the product does rather than its physical quantity. If no valid size/count/pack exists in the title, return an empty string.
-- "color" should be the full color, flavor, or scent descriptor if present, otherwise leave empty.
-- Every product index must appear in either a group or ungrouped, and must have an entry in extracted.`;
+Rules for extracted: size = physical quantity/pack count only. color = flavor/color/scent. Every index must appear in groups or ungrouped and have an extracted entry.`;
   addLog('Calling Claude AI...', 'info');
   setProgress(25, 'Sending to AI for analysis');
   setStep('step-ai');
@@ -2498,49 +2462,19 @@ IMPORTANT for the "extracted" field:
     }
 
     const chunkLines = chunkProducts.map(p => '[' + p.idx + '] ' + p.title).join('\n');
-    const chunkPrompt = `You are grouping e-commerce product listings. Products are the same item sold in different variants and should be grouped together. Products that are fundamentally different items must never be grouped.
+    const chunkPrompt = `Group these e-commerce products into variant families. Same base product + different size/pack/color only = same group. Different flavor, formula, or product type = separate group.
 
-TWO QUESTIONS TO ASK FOR EACH POTENTIAL GROUP:
-1. Is the base product name the same (ignoring size, count, or pack descriptors)?
-2. Are ALL non-size attributes — flavor, color, scent, finish, formula, form factor — identical between them?
-
-If YES to both → same group.
-If NO to either → separate groups.
-
-WHAT CAN DIFFER WITHIN A GROUP (size/quantity only):
-- Any numeric measurement: weight, volume, dimensions, area, count, pieces, doses, servings, etc.
-- Pack count: single unit vs multi-pack
-
-WHAT MUST BE IDENTICAL WITHIN A GROUP (everything else):
-- Flavor, color, scent, finish, pattern — if any of these differ, they are separate groups, no exceptions
-- Formula, ingredients, active agents, composition
-- Form factor (liquid, powder, tablet, spray, gel, etc.)
-- Intended use, application, or target
-- What is physically included in the box
-
-NON-VARIANT DIFFERENCES — always separate groups regardless of name similarity:
-- One includes an accessory, tool, applicator, or bundled item the other does not
-- One is a refill, replacement, or cartridge for a device
-- Different form factors
-- Different intended uses or applications
-- Any descriptor that changes what you physically receive beyond just more/less of the exact same thing
-
-MANDATORY GROUPS — pairs pre-verified by content analysis with 90%+ similarity. Place these in the same group, no exceptions:
+High-similarity pairs (likely same group):
 ${chunkMustGroupPairs.length > 0 ? chunkMustGroupPairs.join('\n') : '(none)'}
-
-ADVISORY (80-89% similarity) — group only if title differences are purely size or pack count, and all other attributes are identical:
-${chunkSimHints.length > 0 ? chunkSimHints.join(', ') : '(none)'}
+${chunkSimHints.length > 0 ? 'Advisory: ' + chunkSimHints.join(', ') : ''}
 
 PRODUCTS:
 ${chunkLines}
 
-Reply ONLY with compact JSON, no markdown, no explanation:
-{"groups":[{"name":"short product name","reason":"brief variant summary","items":[0,2,5]}],"ungrouped":[3,7],"extracted":{"0":{"size":"25 ct, Pack of 2","color":""},"2":{"size":"25 ct","color":""}}}
+Respond with this exact JSON structure, no other text:
+{"groups":[{"name":"base product name","reason":"size/pack variants","items":[0,2,5]}],"ungrouped":[],"extracted":{"0":{"size":"12 fl. oz., Pack of 4","color":"Blueberry"}}}
 
-IMPORTANT for the "extracted" field:
-- "size" must contain ONLY physical product size, weight, volume, count, or pack multiplier. Examples: "25 ct", "5 lb.", "32 fl. oz.", "Pack of 2". Do NOT include coverage areas, duration claims, feature descriptions, or rankings.
-- "color" should be the full color, flavor, or scent descriptor if present, otherwise leave empty.
-- Every product index must appear in either a group or ungrouped, and must have an entry in extracted.`;
+Rules for extracted: size = physical quantity/pack count only. color = flavor/color/scent. Every index must appear in groups or ungrouped and have an extracted entry.`;
 
     const data = await callClaude(chunkPrompt, JSON_SYSTEM);
 

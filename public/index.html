@@ -2326,6 +2326,8 @@ async function callClaude(prompt, system, signal) {
 
 const JSON_SYSTEM = 'You are a JSON API. You MUST respond with ONLY a valid JSON object or array. No explanation, no preamble, no markdown, no code fences. Your entire response must be parseable by JSON.parse(). Start your response with { or [ and end with } or ].';
 
+let isProcessing = false;
+
 async function startProcessing() {
   if (isProcessing) return;
   isProcessing = true;

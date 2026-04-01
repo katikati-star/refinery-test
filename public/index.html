@@ -2422,30 +2422,29 @@ async function startProcessing() {
 
   const prompt = `You are grouping e-commerce product listings into variant groups.
 
-DECISION PROCESS — apply in order:
-1. TITLE MATCH: If products share the same base name and differ only in size, count, color, or pack → same group. This is the primary signal.
-2. CONTENT MATCH: If titles are ambiguous, use the content similarity scores below. 80%+ → group. Under 80% → separate groups.
-3. For Amazon products only, ambiguous cases under 80% content match will be verified by image comparison separately.
+THE RULE IS SIMPLE:
+- Same base product name + differs ONLY in size and/or color → SAME GROUP
+- Different product (different formula, form factor, scent, flavor, included contents, or function) → SEPARATE GROUP
 
-GROUPING RULES:
-- Same base name + only size/weight/volume/count/pack differs → same group
-- Same base name + flavor, color, scent, finish, or formula differs → separate groups, no exceptions
-- Refills, bundles with accessories, or different form factors → always separate groups
+WHAT COUNTS AS SIZE: weight, volume, count, pack quantity, dimensions
+WHAT COUNTS AS COLOR: color, shade, finish — these are variants, not separate products
 
-CONTENT SIMILARITY SCORES (pre-computed — use as tiebreaker for ambiguous titles):
-${mustGroupPairs.length > 0 ? `90%+ match (strong signal — group these):\n${mustGroupPairs.join('\n')}` : ''}
-${simHints.length > 0 ? `80-89% match (group if title differences are only size/pack):\n${simHints.join(', ')}` : ''}
+AMBIGUOUS CASES: If you cannot tell from the title alone whether products are the same base product, use the content similarity scores below as a tiebreaker. 80%+ → group. Under 80% → separate.
+
+CONTENT SIMILARITY SCORES:
+${mustGroupPairs.length > 0 ? `90%+ match (group these):\n${mustGroupPairs.join('\n')}` : ''}
+${simHints.length > 0 ? `80-89% match (group if same base product):\n${simHints.join(', ')}` : ''}
 ${mustGroupPairs.length === 0 && simHints.length === 0 ? '(no high-similarity pairs found)' : ''}
 
 PRODUCTS:
 ${productLines}
 
 Reply ONLY with compact JSON, no markdown, no explanation:
-{"groups":[{"name":"short product name","reason":"brief variant summary","items":[0,2,5]}],"ungrouped":[3,7],"extracted":{"0":{"size":"25 ct, Pack of 2","color":""},"2":{"size":"25 ct","color":""}}}
+{"groups":[{"name":"short product name","reason":"brief variant summary","items":[0,2,5]}],"ungrouped":[3,7],"extracted":{"0":{"size":"25 ct, Pack of 2","color":"Classic Black"},"2":{"size":"25 ct","color":""}}}
 
 IMPORTANT for the "extracted" field:
-- "size" must contain ONLY physical product size, weight, volume, count, or pack multiplier (e.g. "25 ct", "5 lb.", "32 fl. oz.", "Pack of 2"). Do NOT include coverage areas, duration claims, feature descriptions, or rankings.
-- "color" should be the full color, flavor, or scent descriptor if present, otherwise leave empty.
+- "size" must contain ONLY physical product size, weight, volume, count, or pack multiplier (e.g. "25 ct", "5 lb.", "32 fl. oz.", "Pack of 2"). Do NOT include coverage areas, duration claims, or feature descriptions.
+- "color" should be the full color, shade, or finish descriptor if present, otherwise leave empty.
 - Every product index must appear in either a group or ungrouped, and must have an entry in extracted.`;
   addLog('Calling Claude AI...', 'info');
   setProgress(25, 'Sending to AI for analysis');
@@ -2470,29 +2469,29 @@ IMPORTANT for the "extracted" field:
     const chunkLines = chunkProducts.map(p => '[' + p.idx + '] ' + p.title).join('\n');
     const chunkPrompt = `You are grouping e-commerce product listings into variant groups.
 
-DECISION PROCESS — apply in order:
-1. TITLE MATCH: If products share the same base name and differ only in size, count, color, or pack → same group.
-2. CONTENT MATCH: If titles are ambiguous, use the content similarity scores below. 80%+ → group. Under 80% → separate.
+THE RULE IS SIMPLE:
+- Same base product name + differs ONLY in size and/or color → SAME GROUP
+- Different product (different formula, form factor, scent, flavor, included contents, or function) → SEPARATE GROUP
 
-GROUPING RULES:
-- Same base name + only size/weight/volume/count/pack differs → same group
-- Same base name + flavor, color, scent, finish, or formula differs → separate groups, no exceptions
-- Refills, bundles with accessories, or different form factors → always separate groups
+WHAT COUNTS AS SIZE: weight, volume, count, pack quantity, dimensions
+WHAT COUNTS AS COLOR: color, shade, finish — these are variants, not separate products
+
+AMBIGUOUS CASES: If you cannot tell from the title alone, use the content similarity scores below. 80%+ → group. Under 80% → separate.
 
 CONTENT SIMILARITY SCORES:
 ${chunkMustGroupPairs.length > 0 ? `90%+ match (group these):\n${chunkMustGroupPairs.join('\n')}` : ''}
-${chunkSimHints.length > 0 ? `80-89% match (group if title differences are only size/pack):\n${chunkSimHints.join(', ')}` : ''}
+${chunkSimHints.length > 0 ? `80-89% match (group if same base product):\n${chunkSimHints.join(', ')}` : ''}
 ${chunkMustGroupPairs.length === 0 && chunkSimHints.length === 0 ? '(no high-similarity pairs found)' : ''}
 
 PRODUCTS:
 ${chunkLines}
 
 Reply ONLY with compact JSON, no markdown, no explanation:
-{"groups":[{"name":"short product name","reason":"brief variant summary","items":[0,2,5]}],"ungrouped":[3,7],"extracted":{"0":{"size":"25 ct, Pack of 2","color":""},"2":{"size":"25 ct","color":""}}}
+{"groups":[{"name":"short product name","reason":"brief variant summary","items":[0,2,5]}],"ungrouped":[3,7],"extracted":{"0":{"size":"25 ct, Pack of 2","color":"Classic Black"},"2":{"size":"25 ct","color":""}}}
 
 IMPORTANT for the "extracted" field:
-- "size" must contain ONLY physical product size, weight, volume, count, or pack multiplier (e.g. "25 ct", "5 lb.", "32 fl. oz.", "Pack of 2"). Do NOT include coverage areas, duration claims, or feature descriptions.
-- "color" should be the full color, flavor, or scent descriptor if present, otherwise leave empty.
+- "size" must contain ONLY physical product size, weight, volume, count, or pack multiplier. Do NOT include coverage areas, duration claims, or feature descriptions.
+- "color" should be the full color, shade, or finish descriptor if present, otherwise leave empty.
 - Every product index must appear in either a group or ungrouped, and must have an entry in extracted.`;
 
     const controller = new AbortController();
